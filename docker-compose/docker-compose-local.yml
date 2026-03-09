@@ -1,0 +1,75 @@
+version: '3.8'
+
+networks:
+  zachary-network:
+    driver: bridge
+
+
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: mysql8
+    restart: unless-stopped
+    user: "501:20"
+    environment:
+      MYSQL_ROOT_PASSWORD: zacharycui@123
+      # MYSQL_DATABASE: mydatabase
+      MYSQL_USER: zacharycui
+      MYSQL_PASSWORD: zacharycui@123
+    ports:
+      - "3306:3306"
+    volumes:
+      - ./mysql/data:/var/lib/mysql
+      - ./mysql/conf:/etc/mysql/conf:ro
+      - ./mysql/logs:/var/log/mysql
+      - ./mysql/init:/docker-entrypoint-initdb.d:ro
+    command: 
+      --default-authentication-plugin=mysql_native_password
+      --character-set-server=utf8mb4
+      --collation-server=utf8mb4_unicode_ci
+      --bind-address=0.0.0.0
+      --default-time-zone=+8:00
+    networks:
+      - zachary-network
+    ulimits:
+      nproc: 65535
+      nofile:
+        soft: 65536
+        hard: 65536
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p$$MYSQL_ROOT_PASSWORD"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+        reservations:
+          memory: 256M
+
+  redis:
+    container_name: redis
+    image: redis
+    restart: unless-stopped
+    user: "1001:1001"
+    ports:
+      - "6379:6379"
+    environment:
+      REDIS_PASSWORD: zacharycui@123
+    command: redis-server --requirepass zacharycui@123
+    healthcheck:
+      test: ["CMD", "redis-cli", "--pass", "zacharycui@123", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - zachary-network
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+        reservations:
+          memory: 64M
+
