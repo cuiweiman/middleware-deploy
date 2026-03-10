@@ -1,0 +1,125 @@
+networks:
+  zachary-network:
+    driver: bridge
+
+services:
+  zookeeper:
+    image: apachepulsar/pulsar-all:latest
+    container_name: zookeeper
+    hostname: zookeeper
+    networks:
+      - zachary-network
+    ports:
+      - "2181:2181"
+    environment:
+      - metadataStoreUrl=zk:zookeeper:2181
+      - cluster-name=cluster-a
+      - managedLedgerDefaultEnsembleSize=1
+      - managedLedgerDefaultWriteQuorum=1
+      - managedLedgerDefaultAckQuorum=1
+      - PULSAR_MEM=-Xms256m -Xmx512m
+    volumes:
+      - ./data/zookeeper:/pulsar/data/zookeeper
+    command: >
+      bash -c "bin/apply-config-from-env.py conf/zookeeper.conf &&
+               bin/generate-zookeeper-config.sh conf/zookeeper.conf &&
+               exec bin/pulsar zookeeper"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "bash", "-c", "bin/pulsar zookeeper-shell localhost:2181 ls / 2>/dev/null | grep -q zookeeper"]
+      interval: 10s
+      timeout: 10s
+      retries: 15
+      start_period: 60s
+
+  # 初始化集群元数据 (一次性服务)
+  init-cluster-metadata:
+    image: apachepulsar/pulsar-all:latest
+    container_name: initialize-pulsar-cluster-metadata
+    networks:
+      - zachary-network
+    depends_on:
+      zookeeper:
+        condition: service_healthy
+    command: >
+      bash -c "sleep 10 && bin/pulsar initialize-cluster-metadata --cluster cluster-a --zookeeper zookeeper:2181 --configuration-store zookeeper:2181 --web-service-url http://broker:8080 --broker-service-url pulsar://broker:6650"
+    restart: "no" # 此服务只运行一次
+
+
+  # BookKeeper 是 Apache Pulsar 的持久化存储层，专门负责消息数据的可靠存储、写入和读取。你可以把它理解为 Pulsar 的"硬盘"和"数据保险库"。
+  # 数据持久化与可靠性；实现读写分离与高吞吐；提供顺序一致性和故障恢复；Broker​ 就像是前台营业厅，接收和分发消息，BookKeeper 进行消息路由和存储
+  # docker-compose -f docker-compose/docker-compose-local.yml ps bookie
+  # docker-compose -f docker-compose/docker-compose-local.yml exec bookie netstat -tlnp | grep 3181
+  # # 1. 检查 bookie 状态
+  # curl http://localhost:4181/api/v1/bookie/state
+  # # 2. 获取 bookie 信息
+  # curl http://localhost:4181/api/v1/bookie/info
+  # # 3. 检查 bookie 是否就绪
+  # curl http://localhost:4181/api/v1/bookie/is_ready
+  # # 4. 获取 GC 状态
+  # curl http://localhost:4181/api/v1/bookie/gc
+  # # 5. 获取配置信息
+  # curl http://localhost:4181/api/v1/bookie/config
+  bookie:
+    image: apachepulsar/pulsar-all:latest
+    container_name: bookie
+    hostname: bookie
+    networks:
+      - zachary-network
+    depends_on:
+      zookeeper:
+        condition: service_healthy
+    environment:
+      - clusterName=cluster-a
+      - zkServers=zookeeper:2181
+      - PULSAR_MEM=-Xms256m -Xmx512m
+      - metadataServiceUri=metadata-store:zk:zookeeper:2181
+    volumes:
+      - ./data/bookkeeper:/pulsar/data/bookkeeper
+    command: >
+      bash -c "bin/apply-config-from-env.py conf/bookkeeper.conf &&
+               exec bin/pulsar bookie"
+    restart: unless-stopped
+    ports:
+      - "3181:3181"
+      - "4181:4181"
+    healthcheck:
+      test: ["CMD", "bash", "-c", "bin/pulsar bookkeeper-shell localhost:3181 ls / 2>/dev/null | grep -q bookkeeper"]
+      interval: 10s
+      timeout: 10s
+      retries: 15
+      start_period: 60s
+
+  broker:
+    image: apachepulsar/pulsar-all:latest
+    container_name: broker
+    hostname: broker
+    networks:
+      - zachary-network
+    depends_on:
+      zookeeper:
+        condition: service_healthy
+    ports:
+      - "6650:6650"  # Broker 服务端口
+      - "8080:8080"  # Web 服务端口
+    environment:
+      - metadataStoreUrl=zk:zookeeper:2181
+      - zookeeperServers=zookeeper:2181
+      - clusterName=cluster-a
+      - managedLedgerDefaultEnsembleSize=1
+      - managedLedgerDefaultWriteQuorum=1
+      - managedLedgerDefaultAckQuorum=1
+      - PULSAR_MEM=-Xms256m -Xmx512m
+    command: >
+      bash -c "bin/apply-config-from-env.py conf/broker.conf &&
+               exec bin/pulsar broker"
+    volumes:
+      - ./data/broker:/pulsar/data/broker
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "bash", "-c", "curl -f http://localhost:8080/admin/v2/brokers/health || exit 1"]
+      interval: 10s
+      timeout: 10s
+      retries: 15
+      start_period: 60s
+

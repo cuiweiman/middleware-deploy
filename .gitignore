@@ -1,4 +1,10 @@
 .history
 .DS_Store
 docker-compose/mysql/data/*
+docker-compose/etcd/data/*
+docker-compose/redis/data/*
+docker-compose/zookeeper/data/*
+docker-compose/bookkeeper/data/*
+docker-pulsar/data/*
+
 

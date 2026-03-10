@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Docker Compose 一键部署脚本
-# 用于管理 taskey 项目的本地开发环境
+# 用于管理 本地开发环境
 
 set -e
 
@@ -12,9 +12,7 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
-# 项目配置
-PROJECT_NAME="taskey-local"
-COMPOSE_FILE="docker-compose-local.yml"
+COMPOSE_FILE="docker-compose-base.yml"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # MySQL 配置目录
@@ -132,6 +130,16 @@ fix_etcd_permissions() {
     log_success "etcd 目录权限修复完成"
 }
 
+# 修复所有权限问题
+fix_all_permissions() {
+    log_info "修复所有服务的挂载目录权限..."
+    
+    fix_redis_permissions
+    fix_etcd_permissions
+    
+    log_success "所有服务目录权限修复完成"
+}
+
 # 创建必要的目录
 create_directories() {
     log_info "创建必要的目录结构..."
@@ -163,56 +171,17 @@ create_directories() {
 
 # 创建 MySQL 配置文件
 create_mysql_config() {
-    log_info "创建 MySQL 配置文件..."
+    log_info "检查 MySQL 配置目录..."
     
-    local mysql_conf_file="$MYSQL_CONF_DIR/my.cnf"
-    
-    if [ ! -f "$mysql_conf_file" ]; then
-        echo_cmd "cat > \"$mysql_conf_file\" << 'EOF'"
-        cat > "$mysql_conf_file" << 'EOF'
-[mysqld]
-# 基础配置
-user = mysql
-port = 3306
-character-set-server = utf8mb4
-collation-server = utf8mb4_unicode_ci
-max_connections = 1000
-default-time-zone = '+08:00'
-
-# 文件路径
-datadir = /var/lib/mysql
-socket = /var/run/mysqld/mysqld.sock
-pid-file = /var/run/mysqld/mysqld.pid
-log-error = /var/log/mysql/error.log
-
-# 内存优化
-innodb_buffer_pool_size = 256M
-innodb_log_file_size = 128M
-innodb_flush_log_at_trx_commit = 1
-innodb_flush_method = O_DIRECT
-
-# 二进制日志
-server-id = 1
-log-bin = mysql-bin
-binlog_format = row
-expire_logs_days = 7
-max_binlog_size = 100M
-
-# 慢查询日志
-slow_query_log = 1
-slow_query_log_file = /var/log/mysql/slow-query.log
-long_query_time = 2
-
-[client]
-default-character-set = utf8mb4
-
-[mysql]
-default-character-set = utf8mb4
-EOF
-        log_success "MySQL 配置文件创建完成: $mysql_conf_file"
-    else
-        log_info "MySQL 配置文件已存在: $mysql_conf_file"
+    # 确保配置目录存在
+    if [ ! -d "$MYSQL_CONF_DIR" ]; then
+        log_info "创建 MySQL 配置目录: $MYSQL_CONF_DIR"
+        mkdir -p "$MYSQL_CONF_DIR"
     fi
+    
+    # MySQL 配置现在已整合到 docker-compose-base.yml 文件中
+    # 不再需要创建独立的 my.cnf 配置文件
+    log_success "MySQL 配置已整合到 Docker Compose 文件中"
 }
 
 # 启动服务
@@ -423,6 +392,34 @@ test_etcd_service() {
     return 0
 }
 
+
+
+# 测试所有服务功能
+test_all_services() {
+    log_info "测试所有服务功能..."
+    
+    local all_tests_passed=true
+    
+    # 测试 etcd
+    if ! test_etcd_service; then
+        log_error "etcd 服务测试失败"
+        all_tests_passed=false
+    fi
+    
+
+    
+    if [ "$all_tests_passed" = true ]; then
+        echo -e "\n${GREEN}=== 所有服务功能测试全部通过 ===${NC}"
+        log_success "所有服务功能正常，部署成功！"
+    else
+        echo -e "\n${RED}=== 部分服务测试失败 ===${NC}"
+        log_error "请检查失败的服务并重新测试"
+        return 1
+    fi
+    
+    return 0
+}
+
 # 显示使用帮助
 show_help() {
     echo -e "${BLUE}=== Docker Compose 一键部署脚本使用说明 ===${NC}"
@@ -430,40 +427,45 @@ show_help() {
     echo "用法: $0 [选项]"
     echo ""
     echo -e "${GREEN}=== 服务部署选项 ===${NC}"
-    echo "  start          启动所有服务（MySQL、Redis、etcd）"
-    echo "  start-mysql    仅部署 MySQL 服务"
-    echo "  start-redis    仅部署 Redis 服务"
-    echo "  start-etcd     仅部署 etcd 服务"
+    echo "  start            启动所有服务（MySQL、Redis、etcd）"
+    echo "  start-mysql      仅部署 MySQL 服务"
+    echo "  start-redis      仅部署 Redis 服务"
+    echo "  start-etcd       仅部署 etcd 服务"
     echo ""
     echo -e "${GREEN}=== 服务管理选项 ===${NC}"
-    echo "  stop           停止所有服务"
-    echo "  restart        重启所有服务"
-    echo "  status         查看服务状态"
-    echo "  logs           查看服务日志"
+    echo "  stop             停止所有服务"
+    echo "  restart          重启所有服务"
+    echo "  status           查看服务状态"
+    echo "  logs             查看服务日志"
     echo ""
     echo -e "${GREEN}=== 数据库管理选项 ===${NC}"
-    echo "  backup         备份数据库"
-    echo "  cleanup        清理旧的备份文件"
+    echo "  backup           备份数据库"
+    echo "  cleanup          清理旧的备份文件"
     echo ""
     echo -e "${GREEN}=== 权限修复选项 ===${NC}"
-    echo "  fix-redis      修复Redis权限问题"
-    echo "  fix-etcd       修复etcd权限问题"
-    echo "  test-etcd      测试etcd服务功能"
+    echo "  fix-redis        修复 Redis 权限问题"
+    echo "  fix-etcd         修复 etcd 权限问题"
+    echo "  fix-all          修复所有服务权限问题"
+    echo ""
+    echo -e "${GREEN}=== 服务测试选项 ===${NC}"
+    echo "  test-etcd        测试 etcd 服务功能"
+    echo "  test-all         测试所有服务功能"
     echo ""
     echo -e "${GREEN}=== 其他选项 ===${NC}"
-    echo "  menu           显示交互式菜单"
-    echo "  help           显示此帮助信息"
+    echo "  menu             显示交互式菜单"
+    echo "  help             显示此帮助信息"
     echo ""
     echo "示例:"
-    echo "  $0 start        # 启动所有服务"
-    echo "  $0 start-mysql  # 仅启动MySQL"
-    echo "  $0 start-redis  # 仅启动Redis"
-    echo "  $0 start-etcd   # 仅启动etcd"
-    echo "  $0 logs         # 查看日志"
-    echo "  $0 fix-redis    # 修复Redis权限"
-    echo "  $0 fix-etcd     # 修复etcd权限"
-    echo "  $0 test-etcd    # 测试etcd功能"
-    echo "  $0 menu         # 使用交互式菜单"
+    echo "  $0 start           # 启动所有服务"
+    echo "  $0 start-mysql     # 仅启动 MySQL"
+    echo "  $0 start-redis     # 仅启动 Redis"
+    echo "  $0 start-etcd      # 仅启动 etcd"
+    echo "  $0 logs            # 查看日志"
+    echo "  $0 fix-redis       # 修复 Redis 权限"
+    echo "  $0 fix-etcd        # 修复 etcd 权限"
+    echo "  $0 fix-all         # 修复所有权限"
+    echo "  $0 test-etcd       # 测试 etcd 功能"
+    echo "  $0 menu            # 使用交互式菜单"
 }
 
 # 交互式菜单
@@ -671,6 +673,12 @@ etcd_menu() {
     done
 }
 
+
+
+
+
+
+
 # 所有服务管理菜单
 all_services_menu() {
     while true; do
@@ -688,10 +696,14 @@ all_services_menu() {
         echo "6) 备份数据库"
         echo "7) 清理旧备份"
         echo ""
+        echo -e "${GREEN}=== 权限修复 ===${NC}"
+        echo "8) 修复所有权限"
+        echo "9) 测试所有服务功能"
+        echo ""
         echo -e "${RED}=== 其他 ===${NC}"
-        echo "8) 返回主菜单"
+        echo "10) 返回主菜单"
         
-        read -p "请选择操作 [1-8]: " all_choice
+        read -p "请选择操作 [1-10]: " all_choice
         
         case $all_choice in
             1)
@@ -719,6 +731,12 @@ all_services_menu() {
                 cleanup_old_backups
                 ;;
             8)
+                fix_all_permissions
+                ;;
+            9)
+                test_all_services
+                ;;
+            10)
                 break
                 ;;
             *)
@@ -884,6 +902,7 @@ main() {
         start-etcd)
             deploy_single_service "etcd"
             ;;
+
         stop)
             stop_services
             ;;
@@ -908,8 +927,16 @@ main() {
         fix-etcd)
             fix_etcd_permissions
             ;;
+
+        fix-all)
+            fix_all_permissions
+            ;;
         test-etcd)
             test_etcd_service
+            ;;
+
+        test-all)
+            test_all_services
             ;;
         menu)
             show_menu
