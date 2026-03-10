@@ -145,7 +145,7 @@ services:
       - ./conf/secret.key:/pulsar/conf/secret.key:ro   # 挂载对称密钥（只读）
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "bash", "-c", "curl -f http://localhost:8080/admin/v2/brokers/health || exit 1"]
+      test: ["CMD", "bash", "-c", "curl -f -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJhZG1pbiJ9.GDC2uH8uxX-dJecE6eVSiPtb63FI2wqHzy8EA_rOtK4' http://localhost:8080/admin/v2/brokers/health || exit 1"]
       interval: 10s
       timeout: 10s
       retries: 15
