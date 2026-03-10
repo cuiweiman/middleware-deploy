@@ -90,6 +90,21 @@ services:
       retries: 15
       start_period: 60s
 
+
+  # # 1. 使用 Token 访问 Admin API
+  # curl -H "Authorization: Bearer <ADMIN_TOKEN>" \
+  #   http://localhost:8080/admin/v2/brokers/health
+
+  # # 2. 使用 pulsar-admin 命令行（需指定 Token）
+  # docker exec -it broker bash
+  # bin/pulsar-admin --auth-plugin org.apache.pulsar.client.impl.auth.AuthenticationToken \
+  #   --auth-params '{"token":"<ADMIN_TOKEN>"}' \
+  #   brokers list cluster-a
+
+  # # 3. 创建新用户 Token
+  # bin/pulsar tokens create \
+  #   --private-key /pulsar/conf/private.key \
+  #   --subject new-user
   broker:
     image: apachepulsar/pulsar-all:latest
     container_name: broker
@@ -110,11 +125,24 @@ services:
       - managedLedgerDefaultWriteQuorum=1
       - managedLedgerDefaultAckQuorum=1
       - PULSAR_MEM=-Xms256m -Xmx512m
+      # Token 认证配置
+      # 0. 临时启动一个 pulsar: docker run --rm -it apachepulsar/pulsar-all:latest bash
+      # 1. 生成RSA 密钥 bin/pulsar tokens create-secret-key --output /pulsar/conf/secret.key --base64  结果: pQl96N0VeO2Ey4N6i1sy1W3wMTIJ3EZIGf4sEW352Es=
+      # 2. 将 secret.key 复制到宿主机 挂载目录中
+      # 3. 生成 admin token 并配置到 <ADMIN_TOKEN> 中: bin/pulsar tokens create --secret-key /pulsar/conf/secret.key --subject admin 
+      - authenticationEnabled=true
+      - authorizationEnabled=true
+      - authenticationProviders=org.apache.pulsar.broker.authentication.AuthenticationProviderToken
+      - tokenSecretKey=file:///pulsar/conf/secret.key
+      - superUserRoles=admin
+      - brokerClientAuthenticationPlugin=org.apache.pulsar.client.impl.auth.AuthenticationToken
+      - brokerClientAuthenticationParameters={"token":"eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJhZG1pbiJ9.GDC2uH8uxX-dJecE6eVSiPtb63FI2wqHzy8EA_rOtK4"}
     command: >
       bash -c "bin/apply-config-from-env.py conf/broker.conf &&
                exec bin/pulsar broker"
     volumes:
       - ./data/broker:/pulsar/data/broker
+      - ./conf/secret.key:/pulsar/conf/secret.key:ro   # 挂载对称密钥（只读）
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "bash", "-c", "curl -f http://localhost:8080/admin/v2/brokers/health || exit 1"]
