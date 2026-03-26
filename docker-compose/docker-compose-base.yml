@@ -65,14 +65,14 @@ services:
       - "6379:6379"
     environment:
       REDIS_PASSWORD: zacharycui@123
-    command: redis-server --requirepass zacharycui@123
+    command: redis-server --requirepass zacharycui@123 --save "" --appendonly no
     healthcheck:
       test: ["CMD", "redis-cli", "--pass", "zacharycui@123", "ping"]
       interval: 30s
       timeout: 10s
       retries: 3
     networks:
-      - zachary-network
+      - zachary-network    
     deploy:
       resources:
         limits:
