@@ -42,7 +42,7 @@ services:
       zookeeper:
         condition: service_healthy
     command: >
-      bash -c "sleep 10 && bin/pulsar initialize-cluster-metadata --cluster cluster-a --zookeeper zookeeper:2181 --configuration-store zookeeper:2181 --web-service-url http://broker:8080 --broker-service-url pulsar://broker:6650"
+      bash -c "sleep 10 && bin/pulsar initialize-cluster-metadata --cluster cluster-a --zookeeper zookeeper:2181 --configuration-store http://127.0.0.1:2181 --web-service-url http://127.0.0.1:8080 --broker-service-url pulsar://127.0.0.1:6650"
     restart: "no" # 此服务只运行一次
 
 
