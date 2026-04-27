@@ -1,0 +1,111 @@
+networks:
+  zachary-network:
+    driver: bridge
+
+volumes:
+  etcd1-data:
+  etcd2-data:
+  etcd3-data:
+
+x-etcd-common: &etcd-common
+  image: quay.io/coreos/etcd:v3.5.0
+  networks:
+    - zachary-network
+  restart: unless-stopped
+  logging:
+    driver: json-file
+    options:
+      max-size: "10m"
+      max-file: "3"
+  deploy:
+    resources:
+      limits:
+        memory: 256M
+      reservations:
+        memory: 128M
+
+x-etcd-healthcheck: &etcd-healthcheck
+  test: ["CMD", "etcdctl", "--endpoints=http://127.0.0.1:2379", "endpoint", "health"]
+  interval: 30s
+  timeout: 10s
+  retries: 3
+  start_period: 40s
+
+
+services:
+  etcd1:
+    <<: *etcd-common
+    container_name: etcd1
+    ports:
+      - "23801:2380"
+      - "23791:2379"
+    volumes:
+      - etcd1-data:/var/etcd/etcd1
+    environment: 
+      # 节点名称，集群内必须唯一
+      - ETCD_NAME=etcd1
+      # 数据目录
+      - ETCD_DATA_DIR=/var/etcd/etcd1
+      # 允许无认证访问
+      - ALLOW_NONE_AUTHENTICATION=yes
+      # 节点通讯监听 URL
+      - ETCD_LISTEN_PEER_URLS=http://0.0.0.0:2380
+      # 向集群其他节点广播的 Peer 地址
+      - ETCD_INITIAL_ADVERTISE_PEER_URLS=http://etcd1:2380
+      # 客户端通信监听地址
+      - ETCD_LISTEN_CLIENT_URLS=http://0.0.0.0:2379
+      # 向集群广播的客户端访问地址
+      - ETCD_ADVERTISE_CLIENT_URLS=http://etcd1:2379
+      # 集群令牌，用于区分不同集群
+      - ETCD_INITIAL_CLUSTER_TOKEN=etcd-cluster
+      # 初始集群成员列表，格式为 节点名=peer地址
+      - ETCD_INITIAL_CLUSTER=etcd1=http://etcd1:2380,etcd2=http://etcd2:2380,etcd3=http://etcd3:2380
+      # 集群初始状态：new 创建新集群，existing 加入已有集群
+      - ETCD_INITIAL_CLUSTER_STATE=new
+    healthcheck: 
+      <<: *etcd-healthcheck
+
+  etcd2:
+    <<: *etcd-common
+    container_name: etcd2
+    ports:
+      - "23802:2380"
+      - "23792:2379"
+    volumes:
+      - etcd2-data:/var/etcd/etcd2
+    environment:
+      - ETCD_NAME=etcd2
+      - ETCD_DATA_DIR=/var/etcd/etcd2
+      - ALLOW_NONE_AUTHENTICATION=yes
+      - ETCD_LISTEN_PEER_URLS=http://0.0.0.0:2380
+      - ETCD_INITIAL_ADVERTISE_PEER_URLS=http://etcd2:2380
+      - ETCD_LISTEN_CLIENT_URLS=http://0.0.0.0:2379
+      - ETCD_ADVERTISE_CLIENT_URLS=http://etcd2:2379
+      - ETCD_INITIAL_CLUSTER_TOKEN=etcd-cluster
+      - ETCD_INITIAL_CLUSTER=etcd1=http://etcd1:2380,etcd2=http://etcd2:2380,etcd3=http://etcd3:2380
+      - ETCD_INITIAL_CLUSTER_STATE=new
+    healthcheck: 
+      <<: *etcd-healthcheck    
+    
+  etcd3:
+    <<: *etcd-common
+    container_name: etcd3
+    ports:
+      - "23803:2380"
+      - "23793:2379"
+    volumes:
+      - etcd3-data:/var/etcd/etcd3
+    environment:
+      - ETCD_NAME=etcd3
+      - ETCD_DATA_DIR=/var/etcd/etcd3
+      - ALLOW_NONE_AUTHENTICATION=yes
+      - ETCD_LISTEN_PEER_URLS=http://0.0.0.0:2380
+      - ETCD_INITIAL_ADVERTISE_PEER_URLS=http://etcd3:2380
+      - ETCD_LISTEN_CLIENT_URLS=http://0.0.0.0:2379
+      - ETCD_ADVERTISE_CLIENT_URLS=http://etcd3:2379
+      - ETCD_INITIAL_CLUSTER_TOKEN=etcd-cluster
+      - ETCD_INITIAL_CLUSTER=etcd1=http://etcd1:2380,etcd2=http://etcd2:2380,etcd3=http://etcd3:2380
+      - ETCD_INITIAL_CLUSTER_STATE=new
+    healthcheck:
+      <<: *etcd-healthcheck
+
